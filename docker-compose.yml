@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  wyoming-deepgram:
+    build: .
+    image: wyoming-deepgram:latest
+    container_name: wyoming-deepgram
+    restart: unless-stopped
+    ports:
+      - "10300:10300"  # STT
+      - "10200:10200"  # TTS
+    environment:
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - STT_MODEL=${STT_MODEL:-nova-2}
+      - TTS_MODEL=${TTS_MODEL:-aura-asteria-en}
+      - TTS_SAMPLE_RATE=${TTS_SAMPLE_RATE:-24000}
+      - STT_PORT=10300
+      - TTS_PORT=10200
