@@ -94,8 +94,12 @@ class DeepgramTtsHandler(AsyncEventHandler):
                 ).event()
             )
 
-            # Send in chunks
+            # Send in chunks, paced to approximate real-time playback.
+            # The Voice PE uses AudioStop as its signal to unmute the mic,
+            # so we pace chunks to avoid AudioStop arriving before playback
+            # finishes on the device.
             chunk_size = SAMPLES_PER_CHUNK * 2  # 2 bytes per sample (16-bit)
+            chunk_duration = SAMPLES_PER_CHUNK / TTS_OUTPUT_SAMPLE_RATE
             offset = 0
             while offset < len(audio_bytes):
                 chunk = audio_bytes[offset : offset + chunk_size]
@@ -108,6 +112,22 @@ class DeepgramTtsHandler(AsyncEventHandler):
                     ).event()
                 )
                 offset += chunk_size
+                if offset < len(audio_bytes):
+                    await asyncio.sleep(chunk_duration)
+
+            # Trailing silence (~300ms) so the device finishes playback
+            # before AudioStop triggers mic unmute.
+            silence_samples = int(0.3 * TTS_OUTPUT_SAMPLE_RATE)
+            silence = b'\x00' * (silence_samples * 2)
+            await self.write_event(
+                AudioChunk(
+                    audio=silence,
+                    rate=TTS_OUTPUT_SAMPLE_RATE,
+                    width=2,
+                    channels=1,
+                ).event()
+            )
+            await asyncio.sleep(0.3)
 
             await self.write_event(AudioStop().event())
             _LOGGER.debug("TTS audio sent: %d bytes", len(audio_bytes))
