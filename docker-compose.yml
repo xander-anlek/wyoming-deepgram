@@ -7,8 +7,7 @@ services:
     container_name: wyoming-deepgram
     restart: unless-stopped
     ports:
-      - "10300:10300"  # STT
-      - "10200:10200"  # TTS
+      - "10300:10300"  # STT + TTS combined
     environment:
       - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
       - STT_MODEL=${STT_MODEL:-nova-2}

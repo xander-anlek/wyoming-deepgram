@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Main entrypoint for Wyoming-Deepgram bridge. Starts both STT and TTS servers."""
+"""Main entrypoint for Wyoming-Deepgram bridge. Runs STT + TTS on a single port."""
 
 import asyncio
 import logging
 from functools import partial
 
-from wyoming.info import AsrModel, AsrProgram, Attribution, Info, TtsProgram, TtsVoice
-from wyoming.server import AsyncServer
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.event import Event
+from wyoming.info import AsrModel, AsrProgram, Attribution, Describe, Info, TtsProgram, TtsVoice
+from wyoming.server import AsyncEventHandler, AsyncServer
+from wyoming.asr import Transcript
+from wyoming.tts import Synthesize
 
 from wyoming_deepgram import __version__
 from wyoming_deepgram.const import (
@@ -28,7 +32,8 @@ logging.basicConfig(
 )
 
 
-def build_stt_info() -> Info:
+def build_combined_info() -> Info:
+    """Build Info advertising both STT and TTS capabilities."""
     return Info(
         asr=[
             AsrProgram(
@@ -53,11 +58,6 @@ def build_stt_info() -> Info:
                 ],
             )
         ],
-    )
-
-
-def build_tts_info() -> Info:
-    return Info(
         tts=[
             TtsProgram(
                 name="deepgram",
@@ -84,25 +84,64 @@ def build_tts_info() -> Info:
     )
 
 
+class DeepgramCombinedHandler(AsyncEventHandler):
+    """Routes events to either STT or TTS handler based on event type."""
+
+    def __init__(self, wyoming_info: Info, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.wyoming_info = wyoming_info
+        self.wyoming_info_event = wyoming_info.event()
+        # Lazy-init sub-handlers
+        self._stt = DeepgramSttHandler(wyoming_info, *args, **kwargs)
+        self._tts = DeepgramTtsHandler(wyoming_info, *args, **kwargs)
+        # Track current mode
+        self._mode = None  # "stt" or "tts"
+
+    async def handle_event(self, event: Event) -> bool:
+        if Describe.is_type(event.type):
+            await self.write_event(self.wyoming_info_event)
+            _LOGGER.debug("Sent combined info (STT + TTS)")
+            return True
+
+        # Route to TTS if we get a Synthesize event
+        if Synthesize.is_type(event.type):
+            self._mode = "tts"
+            self._tts.writer = self.writer
+            return await self._tts.handle_event(event)
+
+        # Route to STT for audio events
+        if AudioStart.is_type(event.type):
+            self._mode = "stt"
+            self._stt.writer = self.writer
+            return await self._stt.handle_event(event)
+
+        if AudioChunk.is_type(event.type) or AudioStop.is_type(event.type):
+            if self._mode == "stt":
+                self._stt.writer = self.writer
+                return await self._stt.handle_event(event)
+            elif self._mode == "tts":
+                self._tts.writer = self.writer
+                return await self._tts.handle_event(event)
+
+        return True
+
+
 async def main() -> None:
     if not DEEPGRAM_API_KEY:
         _LOGGER.warning(
-            "DEEPGRAM_API_KEY not set! Servers will start but transcription/synthesis will fail."
+            "DEEPGRAM_API_KEY not set! Server will start but transcription/synthesis will fail."
         )
 
-    stt_info = build_stt_info()
-    tts_info = build_tts_info()
+    combined_info = build_combined_info()
+    COMBINED_PORT = STT_PORT  # Use STT_PORT as the single port (default 10300)
 
-    stt_server = AsyncServer.from_uri(f"tcp://0.0.0.0:{STT_PORT}")
-    tts_server = AsyncServer.from_uri(f"tcp://0.0.0.0:{TTS_PORT}")
+    server = AsyncServer.from_uri(f"tcp://0.0.0.0:{COMBINED_PORT}")
 
-    _LOGGER.info("Starting Deepgram STT server on port %d", STT_PORT)
-    _LOGGER.info("Starting Deepgram TTS server on port %d", TTS_PORT)
-
-    await asyncio.gather(
-        stt_server.run(partial(DeepgramSttHandler, stt_info)),
-        tts_server.run(partial(DeepgramTtsHandler, tts_info)),
+    _LOGGER.info(
+        "Starting Deepgram Wyoming server (STT + TTS) on port %d", COMBINED_PORT
     )
+
+    await server.run(partial(DeepgramCombinedHandler, combined_info))
 
 
 if __name__ == "__main__":
