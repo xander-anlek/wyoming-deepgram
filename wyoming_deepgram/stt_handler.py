@@ -78,9 +78,11 @@ class DeepgramSttHandler(AsyncEventHandler):
 
             url = f"https://api.deepgram.com/v1/listen?model={STT_MODEL}&encoding=linear16&sample_rate={self.sample_rate}&channels={self.channels}"
 
-            # Add keywords for boosted recognition
+            # Add keywords/keyterms for boosted recognition
+            # Nova-3+ uses "keyterm", Nova-2 and earlier use "keywords"
+            param_name = "keyterm" if STT_MODEL.startswith("nova-3") else "keywords"
             for kw in STT_KEYWORDS:
-                url += f"&keywords={kw}"
+                url += f"&{param_name}={kw}"
 
             headers = {
                 "Authorization": f"Token {DEEPGRAM_API_KEY}",
