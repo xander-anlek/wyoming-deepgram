@@ -37,7 +37,7 @@ def build_combined_info() -> Info:
     return Info(
         asr=[
             AsrProgram(
-                name="deepgram",
+                name="Deepgram Speech-to-Text",
                 description="Deepgram Nova speech-to-text",
                 attribution=Attribution(
                     name="Deepgram", url="https://deepgram.com"
@@ -60,7 +60,7 @@ def build_combined_info() -> Info:
         ],
         tts=[
             TtsProgram(
-                name="deepgram",
+                name="Deepgram Text-to-Speech",
                 description="Deepgram Aura text-to-speech",
                 attribution=Attribution(
                     name="Deepgram", url="https://deepgram.com"
