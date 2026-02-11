@@ -10,7 +10,7 @@ from wyoming.info import Describe, Info
 from wyoming.server import AsyncEventHandler
 from wyoming.asr import Transcript
 
-from .const import DEEPGRAM_API_KEY, STT_MODEL
+from .const import DEEPGRAM_API_KEY, STT_MODEL, STT_KEYWORDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +77,10 @@ class DeepgramSttHandler(AsyncEventHandler):
             import aiohttp
 
             url = f"https://api.deepgram.com/v1/listen?model={STT_MODEL}&encoding=linear16&sample_rate={self.sample_rate}&channels={self.channels}"
+
+            # Add keywords for boosted recognition
+            for kw in STT_KEYWORDS:
+                url += f"&keywords={kw}"
 
             headers = {
                 "Authorization": f"Token {DEEPGRAM_API_KEY}",

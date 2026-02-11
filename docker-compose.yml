@@ -16,3 +16,4 @@ services:
       - TTS_SAMPLE_RATE=${TTS_SAMPLE_RATE:-24000}
       - STT_PORT=10300
       - TTS_PORT=10200
+      - STT_KEYWORDS=${STT_KEYWORDS:-}
