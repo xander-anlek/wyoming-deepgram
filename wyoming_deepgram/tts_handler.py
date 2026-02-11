@@ -3,6 +3,7 @@
 import asyncio
 import io
 import logging
+import re
 import struct
 from typing import Optional
 
@@ -17,6 +18,37 @@ from .const import DEEPGRAM_API_KEY, TTS_MODEL, TTS_OUTPUT_SAMPLE_RATE
 _LOGGER = logging.getLogger(__name__)
 
 SAMPLES_PER_CHUNK = 1024
+
+
+def _strip_markdown(text: str) -> str:
+    """Remove markdown formatting so TTS reads clean text."""
+    # Remove bold/italic markers: **text**, *text*, __text__, _text_
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
+    text = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', text)
+    # Remove strikethrough: ~~text~~
+    text = re.sub(r'~~([^~]+)~~', r'\1', text)
+    # Remove inline code: `text`
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Remove code blocks: ```...```
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # Remove headers: # Header
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Remove links: [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove images: ![alt](url)
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    # Remove bullet points: - item, * item
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+    # Remove numbered lists: 1. item
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
+    # Remove blockquotes: > text
+    text = re.sub(r'^\s*>\s+', '', text, flags=re.MULTILINE)
+    # Remove horizontal rules: --- or ***
+    text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # Collapse multiple newlines/spaces
+    text = re.sub(r'\n{2,}', '. ', text)
+    text = re.sub(r'\s{2,}', ' ', text)
+    return text.strip()
 
 
 class DeepgramTtsHandler(AsyncEventHandler):
@@ -41,6 +73,9 @@ class DeepgramTtsHandler(AsyncEventHandler):
         if not text:
             _LOGGER.warning("Empty text for TTS")
             return True
+
+        # Strip markdown syntax that LLMs tend to include
+        text = _strip_markdown(text)
 
         _LOGGER.info("Synthesizing: %s", text)
 
